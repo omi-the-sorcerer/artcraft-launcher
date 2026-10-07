@@ -138,6 +138,16 @@ fn register_from(app: &str, appimage: &Path, tmp: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// `true` si `file` es un fichero del icono `icon`: `<icon>.png|svg|xpm`, con o
+/// sin el `.attribution` que algunos AppImage añaden al lado.
+fn is_icon_file(file: &str, icon: &str) -> bool {
+    let Some(rest) = file.strip_prefix(icon).and_then(|r| r.strip_prefix('.')) else {
+        return false;
+    };
+    let ext = rest.strip_suffix(".attribution").unwrap_or(rest);
+    matches!(ext, "png" | "svg" | "xpm")
+}
+
 /// Borra el acceso directo y los iconos de `app`. Solo toca lo que creamos nosotros.
 pub fn unregister(app: &str) {
     let path = desktop_path(app);
@@ -150,12 +160,34 @@ pub fn unregister(app: &str) {
         let mut files = Vec::new();
         walk(&icons_dir(), &mut files);
         for f in files {
-            let stem = f.file_stem().and_then(|s| s.to_str());
-            if stem == Some(icon) {
+            let name = f.file_name().and_then(|s| s.to_str()).unwrap_or("");
+            if is_icon_file(name, icon) {
                 let _ = fs::remove_file(f);
             }
         }
     }
     let _ = fs::remove_file(path);
     refresh_caches();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_icon_file;
+
+    #[test]
+    fn reconoce_icono_y_attribution() {
+        let i = "ai.storyteller.filmcraft";
+        assert!(is_icon_file("ai.storyteller.filmcraft.png", i));
+        assert!(is_icon_file("ai.storyteller.filmcraft.svg", i));
+        assert!(is_icon_file("ai.storyteller.filmcraft.png.attribution", i));
+    }
+
+    #[test]
+    fn no_toca_iconos_ajenos() {
+        let i = "ai.storyteller.filmcraft";
+        assert!(!is_icon_file("ai.storyteller.filmcraft2.png", i));
+        assert!(!is_icon_file("ai.storyteller.photocraft.png", i));
+        assert!(!is_icon_file("ai.storyteller.filmcraft.txt", i));
+        assert!(!is_icon_file("ai.storyteller.filmcraft", i));
+    }
 }
