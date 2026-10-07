@@ -2,7 +2,13 @@
 
 Lanzador, descargador y actualizador de las **Crafting Apps** de
 [ArtCraft](https://getartcraft.com/apps/) (PhotoCraft, FilmCraft, VectorCraft…)
-para Linux. UI nativa en Rust con [egui](https://github.com/emilk/egui).
+para Linux. UI nativa en Rust con [egui](https://github.com/emilk/egui), con
+aspecto y manejo de launcher: una ventana sin bordes, un buscador y la lista de
+apps.
+
+<p align="center">
+  <img src="docs/screenshots/lista.png" width="520" alt="Lista de apps instaladas">
+</p>
 
 Las apps se publican como GitHub Releases en la organización
 [`storytold`](https://github.com/storytold). Este programa consulta esas
@@ -10,25 +16,42 @@ releases, descarga el AppImage de tu arquitectura, verifica su SHA256, lo
 instala por usuario y crea los accesos directos para que aparezcan en rofi,
 ulauncher y cualquier menú de aplicaciones.
 
+## Cómo se ve
+
+Las apps se agrupan por estado y cada fila dice con un chip de color en qué
+punto está:
+
+| | |
+|---|---|
+| <img src="docs/screenshots/actualizaciones.png" width="400" alt="Actualizaciones disponibles"> | <img src="docs/screenshots/busqueda.png" width="400" alt="Búsqueda filtrando por nombre"> |
+| **Actualizaciones.** En naranja, la versión instalada y la nueva; en verde, lo que está al día; en gris, lo que aún no has instalado. | **Búsqueda.** Escribe y la lista se filtra por nombre o descripción. |
+
 ## Características
 
+- **Se maneja con el teclado:** escribe para filtrar, `↑` `↓` para elegir e
+  `Intro` para actuar. Al abrir una app, el launcher se cierra solo.
 - **Catálogo automático:** detecta los repos de la organización cuyo nombre
   termina en `craft`, así que las apps nuevas aparecen solas. Las que aún no
-  tienen build para Linux salen como "sin versión para Linux todavía".
+  tienen build para Linux salen como "sin versión para Linux".
+- **Abre al instante:** muestra el catálogo de la caché del disco y lo
+  actualiza desde GitHub en segundo plano. Las peticiones se hacen en paralelo
+  y, si la red falla, se sigue usando la caché.
 - **Instalar y actualizar** con barra de progreso. Al actualizar se elimina la
   versión anterior.
 - **Verificación de integridad:** compara el SHA256 con el `SHA256SUMS.txt` de
   la release y descarta la descarga si no coincide.
 - **Accesos directos:** reutiliza el `.desktop` y los iconos que ya trae cada
-  AppImage, reescribiendo `Exec` con la ruta real.
-- **Ventana tipo launcher:** flotante y colocada arriba a la derecha (i3/X11).
-  `Esc` la cierra, y se cierra sola al abrir una app.
+  AppImage, reescribiendo `Exec` con la ruta real. Los iconos de las apps
+  instaladas también se muestran en la propia lista.
+- **Ventana flotante arriba a la derecha** (i3/X11), sin bordes.
 - **Sin sobrecargar la API de GitHub:** caché en disco con ETag (las respuestas
   304 no cuentan para el límite de 60 peticiones/hora).
 
 ## Instalación
 
-Requisitos: Rust (`cargo`) y `fuse2` para ejecutar AppImages.
+Requisitos: Rust (`cargo`) y `fuse2` para ejecutar AppImages. La fuente
+[Noto Sans](https://fonts.google.com/noto/specimen/Noto+Sans) se usa si está
+instalada en `/usr/share/fonts/noto/`; si no, se usa la de egui.
 
 ```sh
 git clone git@github.com:omi-the-sorcerer/artcraft-launcher.git
@@ -52,13 +75,28 @@ Abre **ArtCraft Launcher** desde rofi/ulauncher, o ejecuta `artcraft-launcher`.
 Para abrirlo con un atajo en i3:
 
 ```
-bindsym $mod+a exec artcraft-launcher
+bindsym $mod+Shift+a exec artcraft-launcher
 ```
+
+### Teclado
+
+| Tecla | Acción |
+|---|---|
+| *(escribir)* | Filtra por nombre o descripción |
+| `↑` `↓` | Elige una app |
+| `Intro` | Abre la app, o la instala si aún no lo está |
+| `Ctrl+Intro` | Actualiza (o instala) la app elegida |
+| `Esc` | Borra la búsqueda; con la búsqueda vacía, cierra |
+
+También se puede hacer con el ratón: doble clic abre o instala, y al pasar el
+ratón por una fila aparecen las notas de la versión y el botón de desinstalar.
 
 ### Línea de comandos
 
 | Comando | Qué hace |
 |---|---|
+| `artcraft-launcher` | Abre la ventana |
+| `artcraft-launcher <texto>` | Abre la ventana con la búsqueda ya escrita |
 | `artcraft-launcher --list` | Lista el catálogo con la versión instalada y la última |
 | `artcraft-launcher --install <app>` | Instala o actualiza una app sin abrir la ventana |
 | `artcraft-launcher --sync-desktop` | Regenera los accesos directos de lo ya instalado |
@@ -67,6 +105,8 @@ bindsym $mod+a exec artcraft-launcher
 
 - `GITHUB_TOKEN` / `GH_TOKEN`: opcional. Sube el límite de la API de GitHub de
   60 a 5000 peticiones/hora.
+- `XDG_DATA_HOME` / `XDG_CACHE_HOME`: se respetan, así que se puede probar con un
+  directorio de datos distinto sin tocar lo instalado.
 
 ## Dónde guarda las cosas
 
@@ -84,12 +124,15 @@ Los `.desktop` creados por el launcher llevan la marca
 ## Estructura
 
 ```
-src/main.rs      UI (egui), modo CLI y colocación de la ventana
+src/main.rs      punto de entrada y modo CLI
+src/app.rs       la ventana: buscador, lista, filas, teclado
+src/theme.rs     paleta, tipografía y estilo de egui
 src/github.rs    cliente de la API de GitHub con caché ETag y descargas
 src/store.rs     catálogo, instalación, verificación y estado local
 src/desktop.rs   accesos directos e iconos
 src/wm.rs        posicionamiento de la ventana vía IPC de i3
 assets/          icono del launcher
+docs/screenshots capturas del README
 install.sh       compila e instala para el usuario actual
 ```
 
@@ -100,7 +143,9 @@ install.sh       compila e instala para el usuario actual
   para Linux.
 - No usa las actualizaciones delta (`.zsync`) que publican algunas releases:
   cada actualización descarga el archivo completo.
-- La comprobación de versiones es manual (botón "Actualizar lista").
+- La comprobación de versiones es manual (botón ⟳) o al abrir la ventana.
+- Las apps que no están instaladas no muestran su icono, solo su inicial, porque
+  el icono viene dentro del AppImage.
 - La colocación arriba a la derecha solo funciona en **i3 sobre X11**. En otros
   entornos la ventana se abre donde decida el gestor de ventanas.
 - ArtCraft (la app original) no tiene build para Linux, así que no se puede
