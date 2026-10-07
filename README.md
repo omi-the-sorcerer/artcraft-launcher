@@ -31,7 +31,7 @@ ulauncher y cualquier menú de aplicaciones.
 Requisitos: Rust (`cargo`) y `fuse2` para ejecutar AppImages.
 
 ```sh
-git clone <este-repo> artcraft-launcher
+git clone git@github.com:omi-the-sorcerer/artcraft-launcher.git
 cd artcraft-launcher
 ./install.sh
 ```
