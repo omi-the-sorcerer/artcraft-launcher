@@ -45,6 +45,6 @@ pub fn place_top_right(class: &str, width_px: i64) {
     let px = right - width_px - MARGIN;
     let py = y + MARGIN;
     let _ = Command::new("i3-msg")
-        .arg(format!("[class=\"{class}\"] move absolute position {px} px {py} px"))
+        .arg(format!("[class=\"{class}\"] border pixel 1, move absolute position {px} px {py} px"))
         .output();
 }

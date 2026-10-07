@@ -38,7 +38,8 @@ pub struct Repo {
 fn agent() -> ureq::Agent {
     ureq::Agent::config_builder()
         .http_status_as_error(false)
-        .timeout_global(Some(Duration::from_secs(30)))
+        .timeout_connect(Some(Duration::from_secs(6)))
+        .timeout_global(Some(Duration::from_secs(20)))
         .user_agent("artcraft-launcher")
         .build()
         .into()
@@ -56,14 +57,19 @@ fn token() -> Option<String> {
     std::env::var("GITHUB_TOKEN").or_else(|_| std::env::var("GH_TOKEN")).ok()
 }
 
-/// GET con caché ETag. Si el límite de la API se agota, usa la copia en caché.
-fn get_json(url: &str) -> Result<String, String> {
+/// GET con caché ETag. Si el límite de la API se agota o la red falla, usa la
+/// copia en caché. Con `network = false` no sale a internet: solo lee la caché.
+fn get_json(url: &str, network: bool) -> Result<String, String> {
     let dir = cache_dir();
     let _ = fs::create_dir_all(&dir);
     let body_path = dir.join(format!("{}.json", cache_key(url)));
     let etag_path = dir.join(format!("{}.etag", cache_key(url)));
     let cached = fs::read_to_string(&body_path).ok();
     let etag = fs::read_to_string(&etag_path).ok();
+
+    if !network {
+        return cached.ok_or_else(|| "sin caché local".into());
+    }
 
     let mut req = agent().get(url).header("Accept", "application/vnd.github+json");
     if let Some(t) = token() {
@@ -72,7 +78,10 @@ fn get_json(url: &str) -> Result<String, String> {
     if let (Some(e), Some(_)) = (&etag, &cached) {
         req = req.header("If-None-Match", e.trim());
     }
-    let mut resp = req.call().map_err(|e| format!("red: {e}"))?;
+    let mut resp = match req.call() {
+        Ok(r) => r,
+        Err(e) => return cached.ok_or_else(|| format!("red: {e}")),
+    };
     match resp.status().as_u16() {
         200 => {
             let new_etag = resp
@@ -95,15 +104,16 @@ fn get_json(url: &str) -> Result<String, String> {
     }
 }
 
-pub fn list_repos() -> Result<Vec<Repo>, String> {
-    let body = get_json(&format!("https://api.github.com/orgs/{ORG}/repos?per_page=100"))?;
+pub fn list_repos(network: bool) -> Result<Vec<Repo>, String> {
+    let body = get_json(&format!("https://api.github.com/orgs/{ORG}/repos?per_page=100"), network)?;
     serde_json::from_str(&body).map_err(|e| e.to_string())
 }
 
-pub fn list_releases(repo: &str) -> Result<Vec<Release>, String> {
-    let body = get_json(&format!(
-        "https://api.github.com/repos/{ORG}/{repo}/releases?per_page=5"
-    ))?;
+pub fn list_releases(repo: &str, network: bool) -> Result<Vec<Release>, String> {
+    let body = get_json(
+        &format!("https://api.github.com/repos/{ORG}/{repo}/releases?per_page=5"),
+        network,
+    )?;
     serde_json::from_str(&body).map_err(|e| e.to_string())
 }
 

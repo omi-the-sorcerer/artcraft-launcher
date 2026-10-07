@@ -148,6 +148,16 @@ fn is_icon_file(file: &str, icon: &str) -> bool {
     matches!(ext, "png" | "svg" | "xpm")
 }
 
+/// PNG del icono de una app instalada (el mejor tamaño disponible para mostrar).
+pub fn icon_file(app: &str) -> Option<PathBuf> {
+    let content = fs::read_to_string(desktop_path(app)).ok()?;
+    let icon = content.lines().find_map(|l| l.strip_prefix("Icon="))?.trim().to_string();
+    ["128x128", "256x256", "64x64", "512x512", "48x48"]
+        .iter()
+        .map(|size| icons_dir().join(size).join("apps").join(format!("{icon}.png")))
+        .find(|p| p.exists())
+}
+
 /// Borra el acceso directo y los iconos de `app`. Solo toca lo que creamos nosotros.
 pub fn unregister(app: &str) {
     let path = desktop_path(app);

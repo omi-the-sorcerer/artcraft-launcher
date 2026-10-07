@@ -94,22 +94,33 @@ fn pick_latest(releases: &[Release]) -> Option<Latest> {
     })
 }
 
-pub fn load_catalog() -> Result<Vec<CatalogApp>, String> {
-    let mut apps = Vec::new();
-    for repo in github::list_repos()? {
-        if repo.archived || !is_app_repo(&repo.name) {
-            continue;
-        }
-        // Un fallo en un repo no debe tumbar todo el catálogo.
-        let latest = github::list_releases(&repo.name)
-            .ok()
-            .and_then(|r| pick_latest(&r));
-        apps.push(CatalogApp {
-            description: repo.description.unwrap_or_default(),
-            name: repo.name,
-            latest,
-        });
-    }
+/// Catálogo desde GitHub (`network`) o, sin salir a internet, desde la caché del
+/// disco, para poder mostrar algo al instante al abrir.
+pub fn load_catalog(network: bool) -> Result<Vec<CatalogApp>, String> {
+    let repos: Vec<_> = github::list_repos(network)?
+        .into_iter()
+        .filter(|r| !r.archived && is_app_repo(&r.name))
+        .collect();
+
+    // Una petición por repo, todas a la vez: en serie tardaba varios segundos.
+    // Un fallo en un repo no debe tumbar todo el catálogo.
+    let mut apps: Vec<CatalogApp> = std::thread::scope(|s| {
+        let handles: Vec<_> = repos
+            .iter()
+            .map(|r| {
+                s.spawn(move || github::list_releases(&r.name, network).ok().and_then(|rel| pick_latest(&rel)))
+            })
+            .collect();
+        repos
+            .iter()
+            .zip(handles)
+            .map(|(r, h)| CatalogApp {
+                name: r.name.clone(),
+                description: r.description.clone().unwrap_or_default(),
+                latest: h.join().ok().flatten(),
+            })
+            .collect()
+    });
     // Primero las que tienen versión, luego alfabético.
     apps.sort_by(|a, b| {
         b.latest.is_some().cmp(&a.latest.is_some()).then(a.name.cmp(&b.name))
