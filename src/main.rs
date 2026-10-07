@@ -170,28 +170,10 @@ impl Launcher {
 
         egui::Frame::group(ui.style()).show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.horizontal(|ui| {
-                ui.vertical(|ui| {
-                    ui.strong(&app.name);
-                    if !app.description.is_empty() {
-                        ui.label(egui::RichText::new(&app.description).weak().small());
-                    }
-                    let version_line = match (&installed, &app.latest) {
-                        (Some(i), Some(l)) if update_available => {
-                            format!("Instalada {} → disponible {} ({})", i.version, l.version, l.published)
-                        }
-                        (Some(i), _) => format!("Instalada {} (al día)", i.version),
-                        (None, Some(l)) => format!(
-                            "Disponible {} · {} · {:.0} MB",
-                            l.version,
-                            l.published,
-                            l.size as f64 / 1_048_576.0
-                        ),
-                        (None, None) => "Sin versión para Linux todavía".into(),
-                    };
-                    ui.label(version_line);
-                });
 
+            // Fila 1: nombre a la izquierda, acciones a la derecha.
+            ui.horizontal(|ui| {
+                ui.strong(&app.name);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if let Some(job) = self.jobs.get(&app.name) {
                         let total = job.total.load(Ordering::Relaxed);
@@ -226,10 +208,34 @@ impl Launcher {
                             }
                         }
                     }
-                    if let Some(l) = &app.latest {
-                        ui.hyperlink_to("notas", &l.notes_url);
-                    }
                 });
+            });
+
+            // Fila 2: descripción, con salto de línea a ancho completo.
+            if !app.description.is_empty() {
+                ui.label(egui::RichText::new(&app.description).weak().small());
+            }
+
+            // Fila 3: versión y enlace a las notas, que si no caben pasan a otra línea.
+            ui.horizontal_wrapped(|ui| {
+                let version_line = match (&installed, &app.latest) {
+                    (Some(i), Some(l)) if update_available => {
+                        format!("Instalada {} → disponible {} ({})", i.version, l.version, l.published)
+                    }
+                    (Some(i), _) => format!("Instalada {} (al día)", i.version),
+                    (None, Some(l)) => format!(
+                        "Disponible {} · {} · {:.0} MB",
+                        l.version,
+                        l.published,
+                        l.size as f64 / 1_048_576.0
+                    ),
+                    (None, None) => "Sin versión para Linux todavía".into(),
+                };
+                ui.label(version_line);
+                if let Some(l) = &app.latest {
+                    ui.label("·");
+                    ui.hyperlink_to("notas de la versión", &l.notes_url);
+                }
             });
         });
     }
